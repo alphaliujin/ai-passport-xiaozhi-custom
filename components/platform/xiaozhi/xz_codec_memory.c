@@ -118,7 +118,13 @@ bool xz_codec_memory_begin(void) {
   // TLSF aligned_alloc searches a larger block for leading alignment gaps.
   // A freed24KiB region can satisfy malloc(24KiB) while that search fails.
   // Own the ordinary allocation and align its usable slice internally instead.
-  unsigned char *memory = heap_caps_malloc(CODEC_ARENA_BYTES, MALLOC_CAP_8BIT);
+  // A session restart can race BLE teardown: the largest free block is still
+  // growing right after "BLE released", so retry briefly before giving up.
+  unsigned char *memory = NULL;
+  for (int attempt = 0; attempt < 20 && !memory; ++attempt) {
+    if (attempt) vTaskDelay(pdMS_TO_TICKS(100));
+    memory = heap_caps_malloc(CODEC_ARENA_BYTES, MALLOC_CAP_8BIT);
+  }
   if (memory) memset(memory, 0, CODEC_ARENA_BYTES);
   taskENTER_CRITICAL(&arena_guard);
   if (arena) {
