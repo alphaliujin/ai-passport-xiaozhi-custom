@@ -386,6 +386,25 @@ static esp_err_t portal_status(httpd_req_t *r) {
   httpd_resp_set_type(r, "application/json; charset=utf-8");
   return httpd_resp_sendstr(r, body);
 }
+/* Current association, for the portal's "已连接" line. Empty strings when
+ * the station is not associated (which is the normal case for a first setup). */
+static esp_err_t portal_info(httpd_req_t *r) {
+  char ssid[33] = "", ip[16] = "";
+  (void)xz_wifi_ssid(ssid, sizeof ssid);
+  (void)xz_wifi_ip(ip, sizeof ip);
+  cJSON *o = cJSON_CreateObject();
+  if (!o) return httpd_resp_send_err(r, HTTPD_500_INTERNAL_SERVER_ERROR, "no memory");
+  cJSON_AddStringToObject(o, "ssid", ssid);
+  cJSON_AddStringToObject(o, "ip", ip);
+  char *body = cJSON_PrintUnformatted(o);
+  cJSON_Delete(o);
+  if (!body) return httpd_resp_send_err(r, HTTPD_500_INTERNAL_SERVER_ERROR, "no memory");
+  httpd_resp_set_hdr(r, "Cache-Control", "no-store");
+  httpd_resp_set_type(r, "application/json; charset=utf-8");
+  esp_err_t err = httpd_resp_sendstr(r, body);
+  free(body);
+  return err;
+}
 #ifdef PASSPORT_MINIAPP
 /* Recovery owns netcfg. Import only as a fallback and save into our own NVS
  * only after a successful connection, just like a legacy driver profile. */
@@ -724,6 +743,7 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
                 apple_legacy = {.uri="/library/test/success.html",.method=HTTP_GET,.handler=portal_get},
                 networks = {.uri="/networks",.method=HTTP_GET,.handler=portal_networks},
                 outcome = {.uri="/wifi/status",.method=HTTP_GET,.handler=portal_status},
+                info = {.uri="/info",.method=HTTP_GET,.handler=portal_info},
                 post = {.uri = "/wifi",
                         .method = HTTP_POST,
                         .handler = portal_post};
@@ -733,6 +753,7 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
         httpd_register_uri_handler(http,&networks)!=ESP_OK ||
         httpd_register_uri_handler(http, &post) != ESP_OK ||
         httpd_register_uri_handler(http, &outcome) != ESP_OK ||
+        httpd_register_uri_handler(http, &info) != ESP_OK ||
         httpd_register_err_handler(http, HTTPD_404_NOT_FOUND, portal_redirect) != ESP_OK)
       return false;
     status(XZ_SETUP, !setup && profiles.count ? "未连上，请重新配网" : "");
@@ -813,6 +834,21 @@ bool xz_wifi_online(void) {
   esp_netif_ip_info_t info;
   return net_started && sta && esp_wifi_sta_get_ap_info(&record) == ESP_OK &&
          esp_netif_get_ip_info(sta, &info) == ESP_OK && info.ip.addr != 0;
+}
+bool xz_wifi_ip(char *out, size_t len) {
+  esp_netif_ip_info_t info;
+  if (!out || len < 8 || !net_started || !sta) return false;
+  if (esp_netif_get_ip_info(sta, &info) != ESP_OK || info.ip.addr == 0) return false;
+  return esp_ip4addr_ntoa(&info.ip, out, (int)len) != NULL;
+}
+bool xz_wifi_ssid(char *out, size_t len) {
+  wifi_ap_record_t record;
+  if (!out || !len || esp_wifi_sta_get_ap_info(&record) != ESP_OK) return false;
+  size_t n = strnlen((const char *)record.ssid, sizeof record.ssid);
+  if (!n || n >= len) return false;
+  memcpy(out, record.ssid, n);
+  out[n] = 0;
+  return true;
 }
 void xz_wifi_idle_power(bool idle) {
   if (net_started) (void)esp_wifi_set_ps(idle ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE);

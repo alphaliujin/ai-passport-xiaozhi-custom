@@ -9,6 +9,10 @@ bool xz_wifi_open(bool setup, atomic_bool *cancel, xz_status_fn status,
                   char hotspot[32], char password[12]);
 bool xz_wifi_online(void);
 int xz_wifi_rssi(void);
+// Current STA IPv4 address as dotted text; false when offline.
+bool xz_wifi_ip(char *out, size_t len);
+// Currently associated SSID; false when offline.
+bool xz_wifi_ssid(char *out, size_t len);
 void xz_wifi_idle_power(bool idle);
 void xz_wifi_close(void);
 cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status, char code[24]);

@@ -32,9 +32,11 @@ header{display:flex;justify-content:space-between;align-items:center;border-bott
 .scan-dots i:nth-child(2){animation-delay:.2s}.scan-dots i:nth-child(3){animation-delay:.4s}
 @keyframes scan-dot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-2px)}}
 @media(prefers-reduced-motion:reduce){.scan-dots i{animation:none;opacity:1;transform:none}}
+#cur{margin:-6px 0 4px;color:#bad58c;font-size:16px;overflow-wrap:anywhere}#cur[hidden]{display:none}
 </style>
 <header><span class="identity"><span class="signal" aria-hidden="true">◉</span>AI Passport</span><span class="band">2.4 GHz</span></header>
 <h1>连接 Wi-Fi</h1>
+<p id="cur" hidden></p>
 <div class="tabs" role="group" aria-label="添加网络方式"><button id="near" type="button" aria-pressed="true">附近网络</button><button id="manual" type="button" aria-pressed="false">手动添加网络</button></div>
 <section id="near-panel">
 <button id="scan" class="secondary" type="button" aria-describedby="scan-progress"><span id="scan-label">重新扫描</span><span class="scan-dots" aria-hidden="true"><i></i><i></i><i></i></span></button>
@@ -160,5 +162,14 @@ form.onsubmit=manualForm.onsubmit=async(e)=>{
 };
 function viewport(){const v=window.visualViewport;if(!v)return;prompt.style.setProperty('--view-top',v.offsetTop+'px');prompt.style.setProperty('--view-height',v.height+'px');}
 if(window.visualViewport){window.visualViewport.addEventListener('resize',viewport);window.visualViewport.addEventListener('scroll',viewport);}window.addEventListener('resize',viewport);viewport();
+async function loadCurrent(){
+ const el=document.getElementById('cur');
+ try{
+  const response=await request('/info');if(!response.ok)throw Error('info');const data=await response.json();
+  const text=data.ssid?('已连接：'+data.ssid+(data.ip?' · '+data.ip:'')):'';
+  el.textContent=text;el.hidden=!text;
+ }catch(e){el.hidden=true;}
+}
 refresh(false);
+loadCurrent();setInterval(loadCurrent,5000);
 </script></html>

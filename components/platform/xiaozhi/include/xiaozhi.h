@@ -32,6 +32,8 @@ typedef struct {
   bool natural_interrupt, output_active;
   unsigned volume;
   char detail[320], code[24], hotspot[32], password[12];
+  // Current association for the "当前IP" menu page (empty when offline).
+  char ip[16], ssid[33];
 } xz_view_t;
 typedef struct {
   hal_audio_t *audio;

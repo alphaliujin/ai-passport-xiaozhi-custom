@@ -8,7 +8,7 @@
 #include "xiaozhi_volume_digits.inc"
 static struct {
   lv_obj_t *root, *previous, *portrait, *message, *badge, *radio_meter;
-  lv_obj_t *choice[7], *caption[7], *icon[7], *volume_value, *volume_bar;
+  lv_obj_t *choice[8], *caption[8], *icon[8], *volume_value, *volume_bar;
   lv_timer_t *motion;
   ui_battery_icon_t battery;
   xz_view_t view;
@@ -34,7 +34,7 @@ void ui_xiaozhi_set_battery(int percent, int level) {
   battery_percent = percent; battery_level = level;
   if (X.root) ui_theme_battery_set(&X.battery, percent, level);
 }
-enum { CHAT, APPEARANCE, MENU, HELP, INTERRUPT_MODE, VOLUME, BRIGHTNESS, SLEEP_TIME };
+enum { CHAT, APPEARANCE, MENU, HELP, INTERRUPT_MODE, VOLUME, BRIGHTNESS, SLEEP_TIME, IP_INFO };
 static unsigned saved_brightness = 100, saved_sleep_minutes = 5;
 void ui_xiaozhi_set_device_settings(unsigned brightness, unsigned sleep_minutes) {
   saved_brightness = brightness >= 10 && brightness <= 100 ? brightness : 100;
@@ -45,7 +45,7 @@ static bool value_page(void) { return X.page == VOLUME || X.page == BRIGHTNESS |
 static unsigned settings_menu(void) {
   return X.page == VOLUME ? 1 : X.page == BRIGHTNESS ? 4 : X.page == SLEEP_TIME ? 5 : 2;
 }
-enum { MENU_WIFI, MENU_VOLUME, MENU_INTERRUPT, MENU_AGENT, MENU_BRIGHTNESS, MENU_SLEEP, MENU_RETURN, MENU_COUNT };
+enum { MENU_WIFI, MENU_VOLUME, MENU_INTERRUPT, MENU_AGENT, MENU_BRIGHTNESS, MENU_SLEEP, MENU_IP, MENU_RETURN, MENU_COUNT };
 static const char *phase_name(xz_phase_t p) {
   switch (p) {
   case XZ_BOOT: case XZ_WELCOME: case XZ_SETUP: case XZ_LISTEN:
@@ -272,6 +272,7 @@ static void render(void) {
   } else text(X.page == APPEARANCE ? "换个形象" : X.page == MENU ? "小智设置" :
        X.page == INTERRUPT_MODE ? "打断方式" : X.page == VOLUME ? "调整音量" :
        X.page == BRIGHTNESS ? "屏幕亮度" : X.page == SLEEP_TIME ? "休眠时间" :
+       X.page == IP_INFO ? "当前IP" :
        "智能体设置", 16, 14, 180, &ui_font_title, XZ_UI_INK);
   ui_theme_battery_create(&X.battery, X.root);
   ui_theme_battery_set(&X.battery, battery_percent, battery_level);
@@ -295,9 +296,9 @@ static void render(void) {
   }
   if (X.page == MENU) {
     static const char *const items[MENU_COUNT] = {
-        "重新配网", "调整音量", "打断方式", "智能体设置", "屏幕亮度", "休眠时间", "返回"};
+        "重新配网", "调整音量", "打断方式", "智能体设置", "屏幕亮度", "休眠时间", "当前IP", "返回"};
     static const char *const icons[MENU_COUNT] = {
-        LV_SYMBOL_WIFI, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_PAUSE, LV_SYMBOL_SETTINGS, LV_SYMBOL_EYE_OPEN, LV_SYMBOL_POWER, LV_SYMBOL_LEFT};
+        LV_SYMBOL_WIFI, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_PAUSE, LV_SYMBOL_SETTINGS, LV_SYMBOL_EYE_OPEN, LV_SYMBOL_POWER, LV_SYMBOL_LIST, LV_SYMBOL_LEFT};
     if (X.selection < X.menu_first) X.menu_first = X.selection;
     if (X.selection >= X.menu_first + 5) X.menu_first = X.selection - 4;
     if (X.menu_first > MENU_COUNT - 5) X.menu_first = MENU_COUNT - 5;
@@ -312,6 +313,12 @@ static void render(void) {
     }
     char hint[64]; snprintf(hint, sizeof hint, "%u-%u/%u   上下选择", X.menu_first + 1, X.menu_first + 5, MENU_COUNT);
     footer(hint);
+    return;
+  }
+  if (X.page == IP_INFO) {
+    center(text(X.view.ssid[0] ? X.view.ssid : "未连接", 16, 86, 208, &ui_font_title, XZ_UI_MUTED));
+    center(text(X.view.ip[0] ? X.view.ip : "无 IP 地址", 16, 126, 208, &ui_font_title, XZ_UI_INK));
+    footer("按OK返回");
     return;
   }
   if (X.page == INTERRUPT_MODE) {
@@ -557,9 +564,9 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
     bool cancel_brightness = previous == BRIGHTNESS;
     unsigned menu = settings_menu();
     X.page = value_page() || previous == INTERRUPT_MODE || previous == HELP ||
-             previous == CHAT ? MENU : CHAT;
+             previous == CHAT || previous == IP_INFO ? MENU : CHAT;
     X.selection = previous == VOLUME || previous == BRIGHTNESS || previous == SLEEP_TIME ? menu : previous == INTERRUPT_MODE ? MENU_INTERRUPT :
-                  previous == HELP ? MENU_AGENT : previous == APPEARANCE ? 1 : 0;
+                  previous == HELP ? MENU_AGENT : previous == IP_INFO ? MENU_IP : previous == APPEARANCE ? 1 : 0;
     X.setting_error = false;
     render();
     return cancel_brightness ? UI_XZ_BRIGHTNESS_CANCEL : UI_XZ_NONE;
@@ -631,6 +638,14 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
     }
     return UI_XZ_NONE;
   }
+  if (X.page == IP_INFO) {
+    if (key == UI_PLAY_OK) {
+      X.page = MENU;
+      X.selection = MENU_IP;
+      render();
+    }
+    return UI_XZ_NONE;
+  }
   if (X.page == CHAT && X.view.phase == XZ_RADIO) {
     if (key == UI_PLAY_UP) return UI_XZ_RADIO_NEXT;
     if (key == UI_PLAY_DOWN || key == UI_PLAY_OK) return UI_XZ_TALK;
@@ -648,7 +663,7 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
       X.setting_error = false;
       X.page = s == MENU_VOLUME ? VOLUME : s == MENU_BRIGHTNESS ? BRIGHTNESS :
                s == MENU_SLEEP ? SLEEP_TIME : s == MENU_INTERRUPT ? INTERRUPT_MODE :
-               s == MENU_AGENT ? HELP : CHAT;
+               s == MENU_IP ? IP_INFO : s == MENU_AGENT ? HELP : CHAT;
       if (s == MENU_BRIGHTNESS) X.edit_volume = saved_brightness;
       if (s == MENU_SLEEP) X.edit_volume = saved_sleep_minutes;
       if (s == MENU_VOLUME) X.edit_volume = X.view.volume <= 100 ? X.view.volume : 100;

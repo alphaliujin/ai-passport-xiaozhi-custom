@@ -136,6 +136,9 @@ void xiaozhi_snapshot(xz_view_t *out) {
   out->natural_interrupt = atomic_load(&natural_interrupt);
   out->volume = config.get_volume ? config.get_volume(config.user) : 95;
   out->output_active = xiaozhi_output_active();
+  out->ip[0] = out->ssid[0] = 0;
+  (void)xz_wifi_ip(out->ip, sizeof out->ip);
+  (void)xz_wifi_ssid(out->ssid, sizeof out->ssid);
 }
 bool xiaozhi_output_active(void) { return hal_audio_output_active(config.audio); }
 void xiaozhi_welcome_shown(void) { atomic_store(&welcome_visible, true); }
