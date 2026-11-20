@@ -22,6 +22,8 @@ static struct {
   uint32_t wifi_select_at;      // lv_tick of the last selection change
   bool wifi_scan_requested, wifi_join_pending;
   char wifi_join_ssid[33];
+  bool wifi_join_armed;         // only a key press arms the 3 s timer
+  char wifi_focus_ssid[33];     // selection follows this SSID across reorders
 } X;
 static void welcome_drawn(lv_event_t *event) { (void)event; X.welcome_drawn = true; }
 bool ui_xiaozhi_welcome_drawn(void) { return X.welcome_drawn; }
@@ -60,17 +62,19 @@ static bool value_page(void) { return X.page == VOLUME || X.page == BRIGHTNESS |
 static unsigned settings_menu(void) {
   return X.page == VOLUME ? 2 : X.page == BRIGHTNESS ? 5 : X.page == SLEEP_TIME ? 6 : 3;
 }
-// 3 s idle on the WiFi配置 page auto-loads the selected saved network.
+// 3 s after the last UP/DOWN press, switch to the selected saved network.
+// Armed only by a key press and consumed by one shot: the list reorders after
+// a successful switch (the new network moves to the front), so an unarmed
+// index-driven timer would chase a different SSID every cycle.
 static void wifi_cfg_tick(lv_timer_t *t) {
   (void)t;
-  if (X.page != WIFI_CFG || X.wifi_join_pending || X.view.saved_count == 0) return;
+  if (X.page != WIFI_CFG || !X.wifi_join_armed || X.wifi_join_pending) return;
+  if (X.view.saved_count == 0) { X.wifi_join_armed = false; return; }
   if (lv_tick_elaps(X.wifi_select_at) < 3000) return;
+  X.wifi_join_armed = false;  // one shot
   unsigned index = X.selection < X.view.saved_count ? X.selection : 0;
   const char *ssid = X.view.saved_ssids[index];
-  if (!ssid[0] || !strcmp(ssid, X.view.ssid)) {
-    X.wifi_select_at = lv_tick_get();  // already on this network; keep waiting
-    return;
-  }
+  if (!ssid[0] || !strcmp(ssid, X.view.ssid)) return;  // already on this network
   strlcpy(X.wifi_join_ssid, ssid, sizeof X.wifi_join_ssid);
   X.wifi_join_pending = true;
 }
@@ -291,6 +295,7 @@ static void render(void) {
   // stale auto-connect cannot interrupt a later flow such as 重新配网.
   X.wifi_join_pending = false;
   X.wifi_scan_requested = false;
+  if (X.page != WIFI_CFG) { X.wifi_focus_ssid[0] = 0; X.wifi_join_armed = false; }
   X.welcome_drawn = false;
   lv_obj_clean(X.root);
   X.portrait = X.message = X.badge = X.volume_value = X.volume_bar = X.radio_meter = NULL;
@@ -359,6 +364,19 @@ static void render(void) {
     if (X.view.saved_count == 0) {
       center(text("无可连接的已保存 Wi-Fi", 16, 120, 208, &ui_font_title, XZ_UI_MUTED));
     } else {
+      if (!X.wifi_focus_ssid[0]) {
+        // Page entry: preselect the network we are on, else the first entry.
+        unsigned pick = 0;
+        for (unsigned i = 0; i < X.view.saved_count; i++)
+          if (X.view.ssid[0] && !strcmp(X.view.saved_ssids[i], X.view.ssid)) { pick = i; break; }
+        X.selection = pick;
+        strlcpy(X.wifi_focus_ssid, X.view.saved_ssids[pick], sizeof X.wifi_focus_ssid);
+      } else {
+        // A reorder (the active network moves to the front) must not move the
+        // highlight onto another SSID.
+        for (unsigned i = 0; i < X.view.saved_count; i++)
+          if (!strcmp(X.view.saved_ssids[i], X.wifi_focus_ssid)) { X.selection = i; break; }
+      }
       if (X.selection >= X.view.saved_count) X.selection = X.view.saved_count - 1;
       for (unsigned i = 0; i < X.view.saved_count; i++) {
         lv_obj_t *row = panel(X.root, 14, 76 + 36 * i, 212, 32, X.selection == i);
@@ -366,13 +384,11 @@ static void render(void) {
         X.caption[i] = ui_theme_text(row, X.view.saved_ssids[i], 12, 6, 188,
                       &ui_font_title, X.selection == i ? XZ_UI_ON_ACCENT : XZ_UI_INK);
       }
-      // Scan once on entry; 3 s without input auto-loads the selection.
+      // Scan once on entry; the 3 s switch needs an explicit UP/DOWN first.
       X.wifi_scan_requested = true;
-      X.wifi_join_pending = false;
-      X.wifi_select_at = lv_tick_get();
       X.wifi_timer = lv_timer_create(wifi_cfg_tick, 200, NULL);
     }
-    footer(X.view.saved_count ? "OK返回 · 3秒自动连接" : "按OK返回");
+    footer(X.view.saved_count ? "OK返回 · 选后3秒切换" : "按OK返回");
     return;
   }
   if (X.page == INTERRUPT_MODE) {
@@ -702,7 +718,10 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
       if (X.view.saved_count > 1)
         select_item((X.selection + (key == UI_PLAY_UP ? X.view.saved_count - 1 : 1)) %
                     X.view.saved_count);
-      X.wifi_select_at = lv_tick_get();  // restart the 3 s idle timer
+      // Only an explicit selection arms the one-shot 3 s switch.
+      X.wifi_select_at = lv_tick_get();
+      X.wifi_join_armed = true;
+      strlcpy(X.wifi_focus_ssid, X.view.saved_ssids[X.selection], sizeof X.wifi_focus_ssid);
       return UI_XZ_NONE;
     }
     if (key == UI_PLAY_OK) {
