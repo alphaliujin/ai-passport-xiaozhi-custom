@@ -13,6 +13,10 @@ int xz_wifi_rssi(void);
 bool xz_wifi_ip(char *out, size_t len);
 // Currently associated SSID; false when offline.
 bool xz_wifi_ssid(char *out, size_t len);
+// Saved profile SSIDs, most recent first. Returns the number written.
+unsigned xz_wifi_saved_ssids(char out[][33], unsigned max);
+// One-shot target for the next wifi session (a saved SSID); empty clears it.
+void xz_wifi_target(const char *ssid);
 void xz_wifi_idle_power(bool idle);
 void xz_wifi_close(void);
 cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status, char code[24]);

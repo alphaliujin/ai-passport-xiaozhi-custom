@@ -32,8 +32,10 @@ typedef struct {
   bool natural_interrupt, output_active;
   unsigned volume;
   char detail[320], code[24], hotspot[32], password[12];
-  // Current association for the "当前IP" menu page (empty when offline).
+  // Current association and saved profiles for the "WiFi配置" menu page.
   char ip[16], ssid[33];
+  char saved_ssids[5][33];
+  unsigned saved_count;
 } xz_view_t;
 typedef struct {
   hal_audio_t *audio;
@@ -74,6 +76,8 @@ bool xiaozhi_set_natural_interrupt(bool enabled);
 bool xiaozhi_set_volume(unsigned volume);
 void xiaozhi_avatar(unsigned index);
 void xiaozhi_snapshot(xz_view_t *view);
+// Prefer this saved SSID on the next wifi session (小智设置 → WiFi配置).
+void xiaozhi_switch_wifi(const char *ssid);
 typedef struct {
   unsigned frames16, avg16_us, peak16_us, frames24, avg24_us, peak24_us;
   unsigned cpu_mhz, stack_free;

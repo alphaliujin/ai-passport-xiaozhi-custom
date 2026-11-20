@@ -337,6 +337,12 @@ static void button(const play_event_t *event) {
         else if (action == UI_XZ_RETRY || action == UI_XZ_WIFI) {
             xiaozhi_stop(); xz_restart = true; xz_setup = action == UI_XZ_WIFI;
         }
+        else if (action == UI_XZ_WIFI_JOIN) {
+            /* 小智设置 → WiFi配置: reconnect to the chosen saved network.
+             * No portal; the normal worker restart re-runs auto connect. */
+            xiaozhi_switch_wifi(ui_xiaozhi_selected_wifi());
+            xiaozhi_stop(); xz_restart = true; xz_setup = false;
+        }
         return;
     }
     bool back = index == 2 && kind == HAL_BTN_LONG;

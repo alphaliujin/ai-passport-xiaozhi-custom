@@ -42,6 +42,24 @@ static atomic_bool got_ip, credentials_ready, wifi_connecting, connect_failed;
 static atomic_bool disconnect_waiting, disconnect_received, wifi_attempt_issued;
 static atomic_uint disconnect_events;
 static atomic_int failure_reason;
+
+/* Saved-profile SSID cache for the UI: refreshed whenever profiles are loaded
+ * or a connection is persisted, so rendering never touches NVS. */
+static char saved_ssids_cache[XZ_WIFI_PROFILE_MAX][33];
+static unsigned saved_ssids_count;
+static void saved_cache_update(const xz_wifi_profiles_t *profiles) {
+  saved_ssids_count = profiles->count > XZ_WIFI_PROFILE_MAX ? XZ_WIFI_PROFILE_MAX
+                                                            : profiles->count;
+  for (unsigned i = 0; i < saved_ssids_count; i++) {
+    size_t n = profiles->items[i].ssid_len;
+    if (n > 32) n = 32;
+    memcpy(saved_ssids_cache[i], profiles->items[i].ssid, n);
+    saved_ssids_cache[i][n] = 0;
+  }
+}
+/* One-shot switch target chosen in 小智设置 → WiFi配置. The next wifi session
+ * tries this saved profile first, then falls back to the normal order. */
+static char wifi_target_ssid[33];
 static atomic_int portal_scan_done;
 typedef enum { PORTAL_IDLE, PORTAL_CONNECTING, PORTAL_CONNECTED, PORTAL_FAILED } portal_state_t;
 typedef enum { PORTAL_NONE, PORTAL_AUTH, PORTAL_NOT_FOUND, PORTAL_TIMEOUT,
@@ -457,6 +475,7 @@ driver_profile:
 #ifdef PASSPORT_MINIAPP
   if (!profiles->count) recovery_wifi_profile(profiles);
 #endif
+  saved_cache_update(profiles);
 }
 static bool save_wifi_profile(xz_wifi_profiles_t *profiles,
                               const wifi_config_t *config) {
@@ -484,6 +503,7 @@ static bool save_wifi_profile(xz_wifi_profiles_t *profiles,
   memset(blob, 0, sizeof blob); memset(old, 0, sizeof old);
   nvs_close(h);
   if (ok) *profiles = next;
+  if (ok) saved_cache_update(profiles);
   memset(&next, 0, sizeof next);
   return ok;
 }
@@ -578,6 +598,23 @@ static bool auto_wifi(xz_wifi_profiles_t *profiles, atomic_bool *cancel,
                        xz_status_fn status, wifi_config_t *connected) {
   const int64_t deadline = wifi_now_ms() + XZ_WIFI_AUTO_BUDGET_MS;
   status(XZ_WIFI, "正在连接已保存的 Wi-Fi");
+  /* A network picked in 小智设置 wins once; a failure falls through to the
+   * normal order below instead of stranding the device. */
+  if (wifi_target_ssid[0]) {
+    char target[33];
+    strlcpy(target, wifi_target_ssid, sizeof target);
+    wifi_target_ssid[0] = 0;
+    size_t length = strlen(target);
+    for (unsigned i = 0; i < profiles->count; i++) {
+      const xz_wifi_profile_t *p = &profiles->items[i];
+      if (p->ssid_len == length && !memcmp(p->ssid, target, length)) {
+        if (!atomic_load(cancel) &&
+            try_saved(p, cancel, deadline, connected)) return true;
+        break;
+      }
+    }
+    memset(target, 0, sizeof target);
+  }
   /* The last successful profile is authoritative; a phone-style scan can miss
    * hidden/temporarily absent beacons and must never gate reconnect. */
   if (profiles->count && !atomic_load(cancel) &&
@@ -849,6 +886,20 @@ bool xz_wifi_ssid(char *out, size_t len) {
   memcpy(out, record.ssid, n);
   out[n] = 0;
   return true;
+}
+unsigned xz_wifi_saved_ssids(char out[][33], unsigned max) {
+  if (!out || !max) return 0;
+  unsigned n = saved_ssids_count < max ? saved_ssids_count : max;
+  for (unsigned i = 0; i < n; i++)
+    memcpy(out[i], saved_ssids_cache[i], sizeof out[i]);
+  return n;
+}
+void xz_wifi_target(const char *ssid) {
+  if (!ssid || !ssid[0] || strlen(ssid) > 32) {
+    wifi_target_ssid[0] = 0;
+    return;
+  }
+  strlcpy(wifi_target_ssid, ssid, sizeof wifi_target_ssid);
 }
 void xz_wifi_idle_power(bool idle) {
   if (net_started) (void)esp_wifi_set_ps(idle ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE);

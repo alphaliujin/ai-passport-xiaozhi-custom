@@ -48,3 +48,6 @@ node_modules/
 # Historical local implementation plans contain workstation-specific paths.
 doc/plans/
 docs/superpowers/plans/
+
+# clangd index cache
+.cache/
