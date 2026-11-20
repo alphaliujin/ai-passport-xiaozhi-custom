@@ -450,6 +450,9 @@ static void worker(void *arg) {
                 join = ui_xiaozhi_take_wifi_join(wifi_ssid);
                 platform_lvgl_unlock();
             }
+            /* A queued restart (重新配网, retry, exit) owns the session state;
+             * never override it with an auto-join from the WiFi配置 page. */
+            if (join && (xz_restart || xz_leaving)) join = false;
             if (scan) xiaozhi_wifi_scan();
             if (join) {
                 xiaozhi_switch_wifi(wifi_ssid);

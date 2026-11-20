@@ -287,6 +287,10 @@ static void show_portrait(int y) {
 static void render(void) {
   if (X.motion) lv_timer_pause(X.motion);
   if (X.wifi_timer) { lv_timer_delete(X.wifi_timer); X.wifi_timer = NULL; }
+  // Leaving (or redrawing) the WiFi配置 page drops any pending scan/join so a
+  // stale auto-connect cannot interrupt a later flow such as 重新配网.
+  X.wifi_join_pending = false;
+  X.wifi_scan_requested = false;
   X.welcome_drawn = false;
   lv_obj_clean(X.root);
   X.portrait = X.message = X.badge = X.volume_value = X.volume_bar = X.radio_meter = NULL;
