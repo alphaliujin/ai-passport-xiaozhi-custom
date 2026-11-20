@@ -17,6 +17,8 @@ bool xz_wifi_ssid(char *out, size_t len);
 unsigned xz_wifi_saved_ssids(char out[][33], unsigned max);
 // One-shot target for the next wifi session (a saved SSID); empty clears it.
 void xz_wifi_target(const char *ssid);
+// Blocking scan: marks which saved profiles are currently discoverable.
+void xz_wifi_scan_visible(void);
 void xz_wifi_idle_power(bool idle);
 void xz_wifi_close(void);
 cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status, char code[24]);

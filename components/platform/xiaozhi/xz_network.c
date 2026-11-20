@@ -46,6 +46,7 @@ static atomic_int failure_reason;
 /* Saved-profile SSID cache for the UI: refreshed whenever profiles are loaded
  * or a connection is persisted, so rendering never touches NVS. */
 static char saved_ssids_cache[XZ_WIFI_PROFILE_MAX][33];
+static bool saved_visible[XZ_WIFI_PROFILE_MAX];  // seen in the latest scan
 static unsigned saved_ssids_count;
 static void saved_cache_update(const xz_wifi_profiles_t *profiles) {
   saved_ssids_count = profiles->count > XZ_WIFI_PROFILE_MAX ? XZ_WIFI_PROFILE_MAX
@@ -55,6 +56,7 @@ static void saved_cache_update(const xz_wifi_profiles_t *profiles) {
     if (n > 32) n = 32;
     memcpy(saved_ssids_cache[i], profiles->items[i].ssid, n);
     saved_ssids_cache[i][n] = 0;
+    saved_visible[i] = true;  // until a scan says otherwise
   }
 }
 /* One-shot switch target chosen in 小智设置 → WiFi配置. The next wifi session
@@ -889,10 +891,26 @@ bool xz_wifi_ssid(char *out, size_t len) {
 }
 unsigned xz_wifi_saved_ssids(char out[][33], unsigned max) {
   if (!out || !max) return 0;
-  unsigned n = saved_ssids_count < max ? saved_ssids_count : max;
-  for (unsigned i = 0; i < n; i++)
-    memcpy(out[i], saved_ssids_cache[i], sizeof out[i]);
+  unsigned n = 0;
+  for (unsigned i = 0; i < saved_ssids_count && n < max; i++)
+    if (saved_visible[i]) memcpy(out[n++], saved_ssids_cache[i], sizeof out[0]);
   return n;
+}
+void xz_wifi_scan_visible(void) {
+  if (!net_started || !sta || !saved_ssids_count) return;
+  wifi_scan_config_t scan = {.show_hidden = false, .scan_type = WIFI_SCAN_TYPE_ACTIVE,
+                             .scan_time.active = {.min = 50, .max = 100}};
+  if (esp_wifi_scan_start(&scan, true) != ESP_OK) return;
+  bool seen[XZ_WIFI_PROFILE_MAX] = {false};
+  wifi_ap_record_t record;
+  while (esp_wifi_scan_get_ap_record(&record) == ESP_OK) {
+    size_t length = strnlen((char *)record.ssid, 32);
+    if (!length) continue;
+    for (unsigned i = 0; i < saved_ssids_count; i++)
+      if (strlen(saved_ssids_cache[i]) == length &&
+          !memcmp(saved_ssids_cache[i], record.ssid, length)) seen[i] = true;
+  }
+  for (unsigned i = 0; i < saved_ssids_count; i++) saved_visible[i] = seen[i];
 }
 void xz_wifi_target(const char *ssid) {
   if (!ssid || !ssid[0] || strlen(ssid) > 32) {

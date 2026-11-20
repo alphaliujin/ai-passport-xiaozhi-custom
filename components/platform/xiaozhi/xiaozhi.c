@@ -142,6 +142,7 @@ void xiaozhi_snapshot(xz_view_t *out) {
   out->saved_count = xz_wifi_saved_ssids(out->saved_ssids, 5);
 }
 void xiaozhi_switch_wifi(const char *ssid) { xz_wifi_target(ssid); }
+void xiaozhi_wifi_scan(void) { xz_wifi_scan_visible(); }
 bool xiaozhi_output_active(void) { return hal_audio_output_active(config.audio); }
 void xiaozhi_welcome_shown(void) { atomic_store(&welcome_visible, true); }
 void xiaozhi_begin_setup(void) { atomic_store(&setup_confirmed, true); }

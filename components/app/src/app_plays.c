@@ -337,12 +337,6 @@ static void button(const play_event_t *event) {
         else if (action == UI_XZ_RETRY || action == UI_XZ_WIFI) {
             xiaozhi_stop(); xz_restart = true; xz_setup = action == UI_XZ_WIFI;
         }
-        else if (action == UI_XZ_WIFI_JOIN) {
-            /* 小智设置 → WiFi配置: reconnect to the chosen saved network.
-             * No portal; the normal worker restart re-runs auto connect. */
-            xiaozhi_switch_wifi(ui_xiaozhi_selected_wifi());
-            xiaozhi_stop(); xz_restart = true; xz_setup = false;
-        }
         return;
     }
     bool back = index == 2 && kind == HAL_BTN_LONG;
@@ -421,6 +415,7 @@ static void pause_voice_for_sleep(void) {
 static void worker(void *arg) {
     (void)arg;
     uint64_t last_render = 0;
+    uint64_t last_ui_wifi_poll = 0;
     bool last_output_active = false;
     int pending_launch = -1;
     uint32_t pending_launch_generation = 0;
@@ -443,6 +438,24 @@ static void worker(void *arg) {
         }
         if (play_sleep_frozen(&sleep_gate)) { vTaskDelay(pdMS_TO_TICKS(25)); continue; }
         sync_clicker_owner();
+        /* 小智设置 → WiFi配置: scan for visible saved networks on entry, and
+         * join the 3-second idle selection. Raised by the UI, executed here. */
+        if (atomic_load(&active) == UI_PLAY_XIAOZHI &&
+            now_ms() - last_ui_wifi_poll >= 200) {
+            last_ui_wifi_poll = now_ms();
+            bool scan = false, join = false;
+            char wifi_ssid[33] = {0};
+            if (platform_lvgl_lock(50)) {
+                scan = ui_xiaozhi_take_wifi_scan();
+                join = ui_xiaozhi_take_wifi_join(wifi_ssid);
+                platform_lvgl_unlock();
+            }
+            if (scan) xiaozhi_wifi_scan();
+            if (join) {
+                xiaozhi_switch_wifi(wifi_ssid);
+                xiaozhi_stop(); xz_restart = true; xz_setup = false;
+            }
+        }
         if (xz_leaving && xiaozhi_stopped() && platform_lvgl_lock(100)) {
             xz_view_t view; xiaozhi_snapshot(&view);
             if (C.voice_home) {

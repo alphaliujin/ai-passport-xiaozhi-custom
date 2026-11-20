@@ -78,6 +78,8 @@ void xiaozhi_avatar(unsigned index);
 void xiaozhi_snapshot(xz_view_t *view);
 // Prefer this saved SSID on the next wifi session (小智设置 → WiFi配置).
 void xiaozhi_switch_wifi(const char *ssid);
+// Blocking scan used by the WiFi配置 page to list only visible saved networks.
+void xiaozhi_wifi_scan(void);
 typedef struct {
   unsigned frames16, avg16_us, peak16_us, frames24, avg24_us, peak24_us;
   unsigned cpu_mhz, stack_free;
