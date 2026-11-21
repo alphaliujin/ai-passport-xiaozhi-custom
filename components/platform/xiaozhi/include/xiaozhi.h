@@ -80,6 +80,10 @@ void xiaozhi_snapshot(xz_view_t *view);
 void xiaozhi_switch_wifi(const char *ssid);
 // Blocking scan used by the WiFi配置 page to list only visible saved networks.
 void xiaozhi_wifi_scan(void);
+// Server address for the OTA endpoint (小智设置 → 智能体设置). The first three
+// octets follow the device's own IP; the last octet is editable and persisted.
+void xiaozhi_server_ip(char out[16]);
+bool xiaozhi_server_ip_set(const char *ip);
 typedef struct {
   unsigned frames16, avg16_us, peak16_us, frames24, avg24_us, peak24_us;
   unsigned cpu_mhz, stack_free;

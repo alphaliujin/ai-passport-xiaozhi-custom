@@ -4,6 +4,7 @@
 #include "xz_theme.h"
 #include "presentation/ui_xiaozhi_theme.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "xiaozhi_volume_digits.inc"
 static struct {
@@ -24,6 +25,8 @@ static struct {
   char wifi_join_ssid[33];
   bool wifi_join_armed;         // only a key press arms the 3 s timer
   char wifi_focus_ssid[33];     // selection follows this SSID across reorders
+  unsigned server_octet;        // editable last octet of the server address
+  bool server_octet_ready;
 } X;
 static void welcome_drawn(lv_event_t *event) { (void)event; X.welcome_drawn = true; }
 bool ui_xiaozhi_welcome_drawn(void) { return X.welcome_drawn; }
@@ -296,6 +299,7 @@ static void render(void) {
   X.wifi_join_pending = false;
   X.wifi_scan_requested = false;
   if (X.page != WIFI_CFG) { X.wifi_focus_ssid[0] = 0; X.wifi_join_armed = false; }
+  if (X.page != HELP) X.server_octet_ready = false;
   X.welcome_drawn = false;
   lv_obj_clean(X.root);
   X.portrait = X.message = X.badge = X.volume_value = X.volume_bar = X.radio_meter = NULL;
@@ -435,9 +439,28 @@ static void render(void) {
     return;
   }
   if (X.page == HELP) {
-    panel(X.root, 14, 104, 212, 86, false);
-    center(text("前往xiaozhi.me，\n进入控制台设置", 16, 124, 208, &ui_font_title, XZ_UI_INK));
-    control("返回", 0, 1, 274);
+    // 智能体设置 → server address: first three octets follow the device's own
+    // subnet; UP/DOWN edit the last octet, OK saves and reconnects.
+    if (!X.server_octet_ready) {
+      char ip[16];
+      xiaozhi_server_ip(ip);
+      const char *dot = strrchr(ip, '.');
+      unsigned v = dot ? (unsigned)atoi(dot + 1) : 1;
+      X.server_octet = v >= 1 && v <= 254 ? v : 100;
+      X.server_octet_ready = true;
+    }
+    char server[16], shown[32];
+    xiaozhi_server_ip(server);
+    char *dot = strrchr(server, '.');
+    if (dot) *dot = 0;
+    snprintf(shown, sizeof shown, "%s.[%u]", server, X.server_octet);
+    center(text("服务器 IP", 16, 82, 208, &ui_font_title, XZ_UI_MUTED));
+    center(text(shown, 16, 118, 208, &lv_font_montserrat_24, XZ_UI_INK));
+    if (X.setting_error)
+      center(text("保存失败，请重试", 16, 190, 208, &ui_font_body, XZ_UI_ACCENT));
+    else
+      center(text("上下调整 · OK保存", 16, 190, 208, &ui_font_body, XZ_UI_MUTED));
+    footer("长按OK键返回");
     return;
   }
   if (X.page == CHAT && (X.view.phase == XZ_BOOT || X.view.phase == XZ_WELCOME)) {
@@ -706,10 +729,28 @@ ui_xz_action_t ui_xiaozhi_key(ui_play_key_t key, unsigned *avatar) {
     return UI_XZ_NONE;
   }
   if (X.page == HELP) {
-    if (key == UI_PLAY_OK) {
-      X.page = MENU;
-      X.selection = MENU_AGENT;
+    if (key == UI_PLAY_UP) {
+      X.server_octet = X.server_octet >= 254 ? 1 : X.server_octet + 1;
+      X.setting_error = false;
       render();
+      return UI_XZ_NONE;
+    }
+    if (key == UI_PLAY_DOWN) {
+      X.server_octet = X.server_octet <= 1 ? 254 : X.server_octet - 1;
+      X.setting_error = false;
+      render();
+      return UI_XZ_NONE;
+    }
+    if (key == UI_PLAY_OK) {
+      char server[16], full[24];
+      xiaozhi_server_ip(server);
+      char *dot = strrchr(server, '.');
+      if (dot) *dot = 0;
+      snprintf(full, sizeof full, "%s.%u", server, X.server_octet);
+      bool saved = xiaozhi_server_ip_set(full);
+      X.setting_error = !saved;
+      render();
+      return saved ? UI_XZ_SERVER_SET : UI_XZ_NONE;
     }
     return UI_XZ_NONE;
   }

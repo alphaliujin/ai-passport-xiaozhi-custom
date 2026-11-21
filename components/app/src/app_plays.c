@@ -337,6 +337,11 @@ static void button(const play_event_t *event) {
         else if (action == UI_XZ_RETRY || action == UI_XZ_WIFI) {
             xiaozhi_stop(); xz_restart = true; xz_setup = action == UI_XZ_WIFI;
         }
+        else if (action == UI_XZ_SERVER_SET) {
+            /* 智能体设置 saved a new server address: restart the session so
+             * the OTA pull uses it. */
+            xiaozhi_stop(); xz_restart = true; xz_setup = false;
+        }
         return;
     }
     bool back = index == 2 && kind == HAL_BTN_LONG;

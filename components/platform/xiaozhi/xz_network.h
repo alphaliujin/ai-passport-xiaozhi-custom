@@ -19,6 +19,10 @@ unsigned xz_wifi_saved_ssids(char out[][33], unsigned max);
 void xz_wifi_target(const char *ssid);
 // Blocking scan: marks which saved profiles are currently discoverable.
 void xz_wifi_scan_visible(void);
+// Server address used for the OTA endpoint. The first three octets follow the
+// device's own IP; the last octet is user-configurable and persisted in NVS.
+void xz_server_ip_get(char out[16]);
+bool xz_server_ip_set(const char *ip);
 void xz_wifi_idle_power(bool idle);
 void xz_wifi_close(void);
 cJSON *xz_cloud_config(atomic_bool *cancel, xz_status_fn status, char code[24]);

@@ -143,6 +143,8 @@ void xiaozhi_snapshot(xz_view_t *out) {
 }
 void xiaozhi_switch_wifi(const char *ssid) { xz_wifi_target(ssid); }
 void xiaozhi_wifi_scan(void) { xz_wifi_scan_visible(); }
+void xiaozhi_server_ip(char out[16]) { xz_server_ip_get(out); }
+bool xiaozhi_server_ip_set(const char *ip) { return xz_server_ip_set(ip); }
 bool xiaozhi_output_active(void) { return hal_audio_output_active(config.audio); }
 void xiaozhi_welcome_shown(void) { atomic_store(&welcome_visible, true); }
 void xiaozhi_begin_setup(void) { atomic_store(&setup_confirmed, true); }
@@ -480,7 +482,7 @@ static bool open_channel(channel_t *c, cJSON **cloud) {
   const cJSON *sub=cJSON_GetObjectItem(m,"subscribe_topic");
   if(cJSON_IsString(sub) && sub->valuestring[0] &&
      !string_field(m,"subscribe_topic",subscribe,sizeof subscribe))return false;
-  snprintf(uri, sizeof uri, "mqtts://%s", endpoint);
+  snprintf(uri, sizeof uri, "mqtt://%s", endpoint);
   esp_mqtt_client_config_t mc = {
       .broker.address.uri = uri,
       .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
@@ -968,7 +970,10 @@ static session_end_t run_session(bool *wifi_up, xz_quiet_t *quiet, unsigned *mis
     goto finish;
   working.wifi_saved = true; // xz_wifi_open succeeds only after durable profile save.
   working.stage = XZ_STAGE_CLOUD;
-  cloud = xz_cloud_cache_load();
+  // Local-server build: ignore any cached cloud config (it may point at the
+  // previous xiaozhi.me deployment) and always fetch fresh MQTT credentials
+  // from the OTA endpoint configured above.
+  cloud = NULL;
   bool cloud_cached = cloud != NULL;
   ESP_LOGI(TAG,"cloud_cache_hit=%d",cloud_cached);
   if (cloud_cached) {

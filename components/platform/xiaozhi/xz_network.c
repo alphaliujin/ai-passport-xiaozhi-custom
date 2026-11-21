@@ -919,6 +919,53 @@ void xz_wifi_target(const char *ssid) {
   }
   strlcpy(wifi_target_ssid, ssid, sizeof wifi_target_ssid);
 }
+static bool parse_ipv4(const char *ip, unsigned octets[4]) {
+  if (!ip) return false;
+  unsigned a, b, c, d;
+  char tail;
+  if (sscanf(ip, "%u.%u.%u.%u%c", &a, &b, &c, &d, &tail) != 4) return false;
+  if (a > 255 || b > 255 || c > 255 || d > 255) return false;
+  octets[0] = a; octets[1] = b; octets[2] = c; octets[3] = d;
+  return true;
+}
+void xz_server_ip_get(char out[16]) {
+  unsigned saved[4];
+  unsigned last = 1;
+  nvs_handle_t h;
+  char stored[16] = {0};
+  size_t n = sizeof stored;
+  if (nvs_open("xiaozhi", NVS_READONLY, &h) == ESP_OK) {
+    (void)nvs_get_str(h, "server_ip", stored, &n);
+    nvs_close(h);
+  }
+  if (parse_ipv4(stored, saved) && saved[3] >= 1 && saved[3] <= 254) last = saved[3];
+  // The network side of the address always follows this device's own subnet.
+  char ip[16] = {0};
+  if (xz_wifi_ip(ip, sizeof ip)) {
+    char *dot = strrchr(ip, '.');
+    if (dot) {
+      *dot = 0;
+      char tmp[24];
+      snprintf(tmp, sizeof tmp, "%s.%u", ip, last);
+      strlcpy(out, tmp, 16);
+      return;
+    }
+  }
+  if (stored[0]) {
+    strlcpy(out, stored, 16);
+    return;
+  }
+  snprintf(out, 16, "192.168.1.%u", last);
+}
+bool xz_server_ip_set(const char *ip) {
+  unsigned octets[4];
+  if (!parse_ipv4(ip, octets) || octets[3] < 1 || octets[3] > 254) return false;
+  nvs_handle_t h;
+  if (nvs_open("xiaozhi", NVS_READWRITE, &h) != ESP_OK) return false;
+  bool ok = nvs_set_str(h, "server_ip", ip) == ESP_OK && nvs_commit(h) == ESP_OK;
+  nvs_close(h);
+  return ok;
+}
 void xz_wifi_idle_power(bool idle) {
   if (net_started) (void)esp_wifi_set_ps(idle ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE);
 }
@@ -1005,8 +1052,11 @@ static cJSON *cloud_request(const char *payload) {
     cloud_failure=CLOUD_MEMORY;cloud_retryable=true;
     return NULL;
   }
-  esp_http_client_config_t cfg = {.url =
-                                      "https://api.tenclass.net/xiaozhi/ota/",
+  // OTA endpoint on the user-configured server (小智设置 → 智能体设置).
+  char server_ip[16], ota_url[64];
+  xz_server_ip_get(server_ip);
+  snprintf(ota_url, sizeof ota_url, "http://%s:8003/xiaozhi/ota/", server_ip);
+  esp_http_client_config_t cfg = {.url = ota_url,
                                   .method = HTTP_METHOD_POST,
                                   .crt_bundle_attach = esp_crt_bundle_attach,
                                   .timeout_ms = 6000,
